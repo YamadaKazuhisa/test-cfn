@@ -1,0 +1,58 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: EC2 Launch Template with SSM AMI reference and UserData
+
+Parameters:
+  LatestAmiId:
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Description: 最新の Amazon Linux 2 AMI (x86_64, gp2)
+    Default: /aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2
+  Prefix:
+    Type: String
+  KeyName:
+    Type: AWS::EC2::KeyPair::KeyName
+  SubnetId:
+    Type: AWS::EC2::Subnet::Id
+  SecurityGroupId:
+    Type: AWS::EC2::SecurityGroup::Id
+  AmiId:
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: /aws/service/canonical/ubuntu/server/noble/stable/current/arm64/hvm/ebs-gp3/ami-id
+  InstanceType:
+    Type: String
+    Default: t3.micro
+  InstanceProfileName:
+    Type: String
+
+Resources:
+  LaunchTemplate:
+    Type: AWS::EC2::LaunchTemplate
+    Properties:
+      LaunchTemplateData:
+        ImageId: !Ref LatestAmiId
+        InstanceType: !Ref InstanceType
+        KeyName: !Ref KeyName
+        IamInstanceProfile:
+          Name: !Ref InstanceProfileName
+        NetworkInterfaces:
+          - AssociatePublicIpAddress: true
+            DeviceIndex: 0
+            SubnetId: !Ref SubnetId
+            Groups:
+              - !Ref SecurityGroupId
+        BlockDeviceMappings:
+          - DeviceName: /dev/xvda
+            Ebs:
+              VolumeSize: 30
+              VolumeType: gp3
+              DeleteOnTermination: true
+        TagSpecifications:
+          - ResourceType: instance
+            Tags:
+              - Key: Name
+                Value: !Sub "${Prefix}-ec2"
+
+Outputs:
+  LaunchTemplateId:
+    Value: !Ref LaunchTemplate
+  LaunchTemplateVersion:
+    Value: !GetAtt LaunchTemplate.LatestVersionNumber

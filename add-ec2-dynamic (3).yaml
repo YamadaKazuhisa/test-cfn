@@ -1,0 +1,81 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >-
+  EC2 インスタンスを追加するテンプレート。インスタンスサイズ可変、アーキテクチャ(x86_64/arm64)別にAMIを切り替え可能。
+
+Parameters:
+  Prefix:
+    Type: String
+    Description: リソース名プレフィックス
+  KeyName:
+    Type: AWS::EC2::KeyPair::KeyName
+    Description: 既存のEC2 KeyPair 名
+  SubnetId:
+    Type: AWS::EC2::Subnet::Id
+    Description: インスタンスを起動するサブネットID
+  SecurityGroupId:
+    Type: List<AWS::EC2::SecurityGroup::Id>
+    Description: セキュリティグループIDのリスト
+  InstanceType:
+    Type: String
+    Default: t3.small
+    AllowedValues:
+      - t3.micro
+      - t3.small
+      - t3.medium
+      - t4g.micro
+      - t4g.small
+    Description: インスタンスタイプ(t3.* は Intel, t4g.* は ARM)
+  Architecture:
+    Type: String
+    Default: x8664
+    AllowedValues:
+      - x8664
+      - arm64
+    Description: CPU アーキテクチャ
+
+Mappings:
+  ArchToAmiPath:
+    x8664:
+      Path: /aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2
+    arm64:
+      Path: /aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-arm64-gp2
+
+Resources:
+  EC2LaunchTemplate:
+    Type: AWS::EC2::LaunchTemplate
+    Properties:
+      LaunchTemplateData:
+        ImageId: !Join
+          - ""
+          -
+            - "{{resolve:ssm:"
+            - !FindInMap [ ArchToAmiPath, !Ref Architecture, Path ]
+            - ":1}}"
+        InstanceType: !Ref InstanceType
+        KeyName: !Ref KeyName
+        IamInstanceProfile:
+          Name: !Sub "${Prefix}-instance-profile"
+        NetworkInterfaces:
+          - AssociatePublicIpAddress: true
+            DeviceIndex: 0
+            SubnetId: !Ref SubnetId
+            Groups: !Ref SecurityGroupId
+        BlockDeviceMappings:
+          - DeviceName: /dev/xvda
+            Ebs:
+              VolumeSize: 20
+              VolumeType: gp3
+              DeleteOnTermination: true
+        TagSpecifications:
+          - ResourceType: instance
+            Tags:
+              - Key: Name
+                Value: !Sub "${Prefix}-ec2"
+
+Outputs:
+  LaunchTemplateId:
+    Description: Launch Template の ID
+    Value: !Ref EC2LaunchTemplate
+  LaunchTemplateVersion:
+    Description: 最新バージョン番号
+    Value: !GetAtt EC2LaunchTemplate.LatestVersionNumber

@@ -1,0 +1,10 @@
+[
+  {
+    "ParameterKey": "Prefix",
+    "ParameterValue": "myproject-prod"
+  },
+  {
+    "ParameterKey": "KeyName",
+    "ParameterValue": "your-keypair-name"
+  }
+]

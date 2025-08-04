@@ -1,0 +1,134 @@
+
+AWSTemplateFormatVersion: 2010-09-09
+Description: Root nested stack
+
+Parameters:
+  Prefix:
+    Type: String
+
+  KeyName:
+    Type: AWS::EC2::KeyPair::KeyName
+
+  SubnetId:
+    Type: AWS::EC2::Subnet::Id
+    Description: 既存VPCStackの出力から渡されるサブネットID
+
+  SecurityGroupId:
+    Type: AWS::EC2::SecurityGroup::Id
+    Description: 既存SGStackの出力から渡されるセキュリティグループID
+
+  InstanceType:
+    Type: String
+    Default: t3.micro
+    AllowedValues:
+      - t2.micro
+      - t3.micro
+      - t4g.small
+    Description: EC2 インスタンスのサイズ
+
+  Architecture:
+    Type: String
+    Default: x8664
+    AllowedValues:
+      - x8664
+      - arm64
+    Description: CPU アーキテクチャ
+
+Resources:
+  EC2InstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess
+      Policies:
+        - PolicyName: EC2FullS3AccessTemporary
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:ListBucket
+                Resource:
+                  - "arn:aws:s3:::ap-northeast-1.repo.amazonlinux.com/*"
+                  - "arn:aws:s3:::amazonlinux-ami/*"
+                  - "arn:aws:s3:::amazonlinux-ami-repository/*"
+                  - "arn:aws:s3:::amazonlinux-repos/*"
+                  - "arn:aws:s3:::aq-test-cf-bucket20250619/*"
+              - Effect: Allow
+                Action:
+                  - ssm:DescribeAssociation
+                  - ssm:GetDeployablePatchSnapshotForInstance
+                  - ssm:GetDocument
+                  - ssm:DescribeDocument
+                  - ssm:GetManifest
+                  - ssm:GetParameter
+                  - ssm:GetParameters
+                  - ssm:ListAssociations
+                  - ssm:ListInstanceAssociations
+                  - ec2messages:AcknowledgeMessage
+                  - ec2messages:DeleteMessage
+                  - ec2messages:FailMessage
+                  - ec2messages:GetEndpoint
+                  - ec2messages:GetMessages
+                  - ec2messages:SendReply
+                Resource: "*"
+
+  EC2InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      InstanceProfileName: !Sub "${Prefix}-instance-profile"
+      Roles:                          
+        - !Ref EC2InstanceRole
+
+  VPCStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: https://s3.ap-northeast-1.amazonaws.com/aq-test-cf-bucket20250619/network/vpc.yaml
+      Parameters:
+        Prefix: !Ref Prefix
+
+  SGStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: https://s3.ap-northeast-1.amazonaws.com/aq-test-cf-bucket20250619/security/sg.yaml
+      Parameters:
+        VpcId: !GetAtt VPCStack.Outputs.VpcId
+
+  EC2AddStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: https://s3.ap-northeast-1.amazonaws.com/aq-test-cf-bucket20250619/add/add-ec2-dynamic.yaml
+      Parameters:
+        Prefix: !Ref Prefix
+        KeyName: !Ref KeyName
+        SubnetId: !GetAtt VPCStack.Outputs.PublicSubnetId  # 実際の出力キー名に合わせて
+        SecurityGroupId: !GetAtt SGStack.Outputs.SecurityGroupId
+        InstanceType: !Ref InstanceType  # 親スタックの同名パラメータがある場合
+        Architecture: !Ref Architecture  # 同上
+
+  LaunchTemplateStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: https://s3.ap-northeast-1.amazonaws.com/aq-test-cf-bucket20250619/compute/launch-template.yaml
+      Parameters:
+        Prefix: !Ref Prefix
+        KeyName: !Ref KeyName
+        SubnetId: !GetAtt VPCStack.Outputs.PublicSubnetId
+        SecurityGroupId: !GetAtt SGStack.Outputs.SecurityGroupId
+        InstanceProfileName: !Ref EC2InstanceProfile
+
+  EC2Instance:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: https://s3.ap-northeast-1.amazonaws.com/aq-test-cf-bucket20250619/compute/ec2.yaml
+      Parameters:
+        LaunchTemplateId: !GetAtt EC2AddStack.Outputs.LaunchTemplateId
+        Version:           !GetAtt EC2AddStack.Outputs.LaunchTemplateVersion

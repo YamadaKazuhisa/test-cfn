@@ -1,0 +1,12 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: Store Ubuntu ARM64 AMI ID in SSM Parameter Store
+
+Resources:
+  UbuntuArm64AmiId:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: /custom/ubuntu/24.04-arm64
+      Type: String
+      Value: ami-1234567890abcdef0
+      Description: Ubuntu 24.04 ARM64 AMI ID
+      Tier: Standard
